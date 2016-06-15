@@ -1,6 +1,7 @@
 package kotlin.internal
 
 import java.io.Closeable
+import java.util.regex.MatchResult
 
 internal open class PlatformImplementations {
 
@@ -13,6 +14,10 @@ internal open class PlatformImplementations {
             // on Java 7 we should call
             // e.addSuppressed(closeException)
         }
+    }
+
+    public open fun getMatchResultNamedGroup(matchResult: MatchResult, name: String): MatchGroup? {
+        throw UnsupportedOperationException("Retrieving groups by name is not supported on this platform.")
     }
 
     companion object {
@@ -51,5 +56,7 @@ internal open class PlatformImplementations {
         }
 
     }
+
+
 }
 
