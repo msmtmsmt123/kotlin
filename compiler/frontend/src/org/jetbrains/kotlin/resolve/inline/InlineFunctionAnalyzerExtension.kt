@@ -21,41 +21,21 @@ import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingTrace
-import org.jetbrains.kotlin.resolve.FunctionAnalyzerExtension
+import org.jetbrains.kotlin.resolve.AnalyzerExtensions
 import org.jetbrains.kotlin.resolve.annotations.isInlineOnlyOrReified
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
 
-object InlineAnalyzerExtension : FunctionAnalyzerExtension.AnalyzerExtension {
+object InlineFunctionAnalyzerExtension : BaseInlineAnalyzer(), AnalyzerExtensions.FunctionAnalyzerExtension {
 
     override fun process(descriptor: FunctionDescriptor, function: KtNamedFunction, trace: BindingTrace) {
         assert(InlineUtil.isInline(descriptor)) { "This method should be invoked on inline function: " + descriptor }
+        super.process(descriptor, function, trace)
 
         checkDefaults(descriptor, function, trace)
-        checkModalityAndOverrides(descriptor, function, trace)
         checkHasInlinableAndNullability(descriptor, function, trace)
-
-        val visitor = object : KtVisitorVoid() {
-            override fun visitKtElement(element: KtElement) {
-                super.visitKtElement(element)
-                element.acceptChildren(this)
-            }
-
-            override fun visitClass(klass: KtClass) {
-                trace.report(Errors.NOT_YET_SUPPORTED_IN_INLINE.on(klass, klass, descriptor))
-            }
-
-            override fun visitNamedFunction(function: KtNamedFunction) {
-                if (function.parent.parent is KtObjectDeclaration) {
-                    super.visitNamedFunction(function)
-                }
-                else {
-                    trace.report(Errors.NOT_YET_SUPPORTED_IN_INLINE.on(function, function, descriptor))
-                }
-            }
-        }
-
-        function.acceptChildren(visitor)
     }
+
+
 
     private fun checkDefaults(
             functionDescriptor: FunctionDescriptor,
@@ -72,47 +52,6 @@ object InlineAnalyzerExtension : FunctionAnalyzerExtension.AnalyzerExtension {
             }
         }
     }
-
-    private fun checkModalityAndOverrides(
-            functionDescriptor: FunctionDescriptor,
-            function: KtFunction,
-            trace: BindingTrace) {
-        if (functionDescriptor.containingDeclaration is PackageFragmentDescriptor) {
-            return
-        }
-
-        if (Visibilities.isPrivate(functionDescriptor.visibility)) {
-            return
-        }
-
-        val overridesAnything = functionDescriptor.overriddenDescriptors.isNotEmpty()
-
-        if (overridesAnything) {
-            val ktTypeParameters = function.typeParameters
-            for (typeParameter in functionDescriptor.typeParameters) {
-                if (typeParameter.isReified) {
-                    val ktTypeParameter = ktTypeParameters[typeParameter.index]
-                    val reportOn = ktTypeParameter.modifierList?.getModifier(KtTokens.REIFIED_KEYWORD) ?: ktTypeParameter
-                    trace.report(Errors.REIFIED_TYPE_PARAMETER_IN_OVERRIDE.on(reportOn))
-                }
-            }
-        }
-
-        if (functionDescriptor.isEffectivelyFinal()) {
-            if (overridesAnything) {
-                trace.report(Errors.OVERRIDE_BY_INLINE.on(function))
-            }
-            return
-        }
-
-        trace.report(Errors.DECLARATION_CANT_BE_INLINED.on(function))
-    }
-
-    private fun FunctionDescriptor.isEffectivelyFinal(): Boolean =
-            modality == Modality.FINAL ||
-            containingDeclaration.let { containingDeclaration ->
-                containingDeclaration is ClassDescriptor && containingDeclaration.modality == Modality.FINAL
-            }
 
     private fun checkHasInlinableAndNullability(
             functionDescriptor: FunctionDescriptor,
