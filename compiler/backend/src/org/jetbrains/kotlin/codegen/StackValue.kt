@@ -68,3 +68,7 @@ open class OperationStackValue(resultType: Type, val lambda: (v: InstructionAdap
 }
 
 class FunctionCallStackValue(resultType: Type, lambda: (v: InstructionAdapter) -> Unit) : OperationStackValue(resultType, lambda)
+
+interface ComplexOperationAware {
+    var performingComplexOperation: Boolean
+}
