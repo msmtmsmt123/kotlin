@@ -65,7 +65,7 @@ public class BodyResolver {
     @NotNull private final DeclarationsChecker declarationsChecker;
     @NotNull private final AnnotationResolver annotationResolver;
     @NotNull private final DelegatedPropertyResolver delegatedPropertyResolver;
-    @NotNull private final FunctionAnalyzerExtension functionAnalyzerExtension;
+    @NotNull private final AnalyzerExtensions analyzerExtensions;
     @NotNull private final ValueParameterResolver valueParameterResolver;
     @NotNull private final BodyResolveCache bodyResolveCache;
     @NotNull private final KotlinBuiltIns builtIns;
@@ -80,7 +80,7 @@ public class BodyResolver {
             @NotNull DeclarationsChecker declarationsChecker,
             @NotNull DelegatedPropertyResolver delegatedPropertyResolver,
             @NotNull ExpressionTypingServices expressionTypingServices,
-            @NotNull FunctionAnalyzerExtension functionAnalyzerExtension,
+            @NotNull AnalyzerExtensions analyzerExtensions,
             @NotNull BindingTrace trace,
             @NotNull ValueParameterResolver valueParameterResolver,
             @NotNull AnnotationChecker annotationChecker,
@@ -95,7 +95,7 @@ public class BodyResolver {
         this.declarationsChecker = declarationsChecker;
         this.delegatedPropertyResolver = delegatedPropertyResolver;
         this.expressionTypingServices = expressionTypingServices;
-        this.functionAnalyzerExtension = functionAnalyzerExtension;
+        this.analyzerExtensions = analyzerExtensions;
         this.annotationChecker = annotationChecker;
         this.overloadChecker = overloadChecker;
         this.trace = new ObservableBindingTrace(trace);
@@ -238,7 +238,7 @@ public class BodyResolver {
         resolveBehaviorDeclarationBodies(c);
         controlFlowAnalyzer.process(c);
         declarationsChecker.process(c);
-        functionAnalyzerExtension.process(c);
+        analyzerExtensions.process(c);
     }
 
     private void resolveSuperTypeEntryLists(@NotNull BodiesResolveContext c) {
