@@ -2223,7 +2223,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
                 receiver = StackValue.receiverWithoutReceiverArgument(receiver);
             }
 
-            return intermediateValueForProperty(propertyDescriptor, directToField, directToField, superCallTarget, false, receiver);
+            return intermediateValueForProperty(propertyDescriptor, directToField, directToField, superCallTarget, false, receiver, resolvedCall);
         }
 
         if (descriptor instanceof ClassDescriptor) {
@@ -2370,7 +2370,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             @Nullable ClassDescriptor superCallTarget,
             @NotNull StackValue receiver
     ) {
-        return intermediateValueForProperty(propertyDescriptor, forceField, false, superCallTarget, false, receiver);
+        return intermediateValueForProperty(propertyDescriptor, forceField, false, superCallTarget, false, receiver, null);
     }
 
     private CodegenContext getBackingFieldContext(
@@ -2393,7 +2393,8 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             boolean syntheticBackingField,
             @Nullable ClassDescriptor superCallTarget,
             boolean skipAccessorsForPrivateFieldInOuterClass,
-            StackValue receiver
+            StackValue receiver,
+            ResolvedCall resolvedCall
     ) {
         if (propertyDescriptor instanceof SyntheticJavaPropertyDescriptor) {
             return intermediateValueForSyntheticExtensionProperty((SyntheticJavaPropertyDescriptor) propertyDescriptor, receiver);
@@ -2489,7 +2490,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         return StackValue.property(propertyDescriptor, backingFieldOwner,
                                    typeMapper.mapType(
                                            isDelegatedProperty && forceField ? delegateType : propertyDescriptor.getOriginal().getType()),
-                                   isStaticBackingField, fieldName, callableGetter, callableSetter, state, receiver);
+                                   isStaticBackingField, fieldName, callableGetter, callableSetter, receiver, this, resolvedCall);
     }
 
     @NotNull
@@ -2503,7 +2504,8 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         FunctionDescriptor setMethod = propertyDescriptor.getSetMethod();
         CallableMethod callableSetter =
                 setMethod != null ? typeMapper.mapToCallableMethod(context.accessibleDescriptor(setMethod, null), false) : null;
-        return StackValue.property(propertyDescriptor, null, type, false, null, callableGetter, callableSetter, state, receiver);
+        return StackValue.property(propertyDescriptor, null, type, false, null, callableGetter, callableSetter, receiver, this,
+                                   null);
     }
 
     @Override
@@ -2757,8 +2759,11 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         return getOrCreateCallGenerator(descriptor, function, null, true);
     }
 
-    @NotNull
     CallGenerator getOrCreateCallGenerator(@NotNull ResolvedCall<?> resolvedCall) {
+        return getOrCreateCallGenerator(resolvedCall, resolvedCall.getResultingDescriptor());
+    }
+    @NotNull
+    CallGenerator getOrCreateCallGenerator(@NotNull ResolvedCall<?> resolvedCall, @NotNull CallableDescriptor descriptor) {
         Map<TypeParameterDescriptor, KotlinType> typeArguments = resolvedCall.getTypeArguments();
         TypeParameterMappings mappings = new TypeParameterMappings();
         for (Map.Entry<TypeParameterDescriptor, KotlinType> entry : typeArguments.entrySet()) {
@@ -2785,7 +2790,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             }
         }
         return getOrCreateCallGenerator(
-                resolvedCall.getResultingDescriptor(), resolvedCall.getCall().getCallElement(), mappings, false);
+                descriptor, resolvedCall.getCall().getCallElement(), mappings, false);
     }
 
 

@@ -30,7 +30,6 @@ import org.jetbrains.kotlin.codegen.context.*;
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicArrayConstructorsKt;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
-import org.jetbrains.kotlin.coroutines.CoroutineUtilKt;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache;
 import org.jetbrains.kotlin.name.ClassId;
@@ -47,7 +46,7 @@ import org.jetbrains.kotlin.resolve.jvm.AsmTypes;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterKind;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterSignature;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
-import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedSimpleFunctionDescriptor;
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
 import org.jetbrains.kotlin.types.expressions.DoubleColonLHS;
 import org.jetbrains.kotlin.types.expressions.LabelResolver;
 import org.jetbrains.org.objectweb.asm.Label;
@@ -212,8 +211,8 @@ public class InlineCodegen extends CallGenerator {
                 : jvmSignature.getAsmMethod();
 
         MethodId methodId = new MethodId(DescriptorUtils.getFqNameSafe(functionDescriptor.getContainingDeclaration()), asmMethod);
-
-        if (!isBuiltInArrayIntrinsic(functionDescriptor) && !(functionDescriptor instanceof DeserializedSimpleFunctionDescriptor)) {
+        final CallableMemberDescriptor directMember = JvmCodegenUtil.getDirectMember(functionDescriptor);
+        if (!isBuiltInArrayIntrinsic(functionDescriptor) && !(directMember instanceof DeserializedCallableMemberDescriptor)) {
             return doCreateMethodNodeFromSource(functionDescriptor, jvmSignature, codegen, context, callDefault, state, asmMethod);
         }
 
@@ -221,7 +220,7 @@ public class InlineCodegen extends CallGenerator {
                 state.getInlineCache().getMethodNodeById(), methodId, new Function0<SMAPAndMethodNode>() {
                     @Override
                     public SMAPAndMethodNode invoke() {
-                        SMAPAndMethodNode result = doCreateMethodNodeFromCompiled(functionDescriptor, state, asmMethod);
+                        SMAPAndMethodNode result = doCreateMethodNodeFromCompiled(directMember, state, asmMethod);
                         if (result == null) {
                             throw new IllegalStateException("Couldn't obtain compiled function body for " + functionDescriptor);
                         }
@@ -246,7 +245,7 @@ public class InlineCodegen extends CallGenerator {
 
     @Nullable
     private static SMAPAndMethodNode doCreateMethodNodeFromCompiled(
-            @NotNull FunctionDescriptor functionDescriptor,
+            @NotNull CallableMemberDescriptor functionDescriptor,
             @NotNull final GenerationState state,
             @NotNull Method asmMethod
     ) {
@@ -264,10 +263,10 @@ public class InlineCodegen extends CallGenerator {
             return InlineCodegenUtil.getMethodNode(bytes, asmMethod.getName(), asmMethod.getDescriptor(), classId, state);
         }
 
-        assert functionDescriptor instanceof DeserializedSimpleFunctionDescriptor : "Not a deserialized function: " + functionDescriptor;
+        assert functionDescriptor instanceof DeserializedCallableMemberDescriptor : "Not a deserialized function or proper: " + functionDescriptor;
 
         KotlinTypeMapper.ContainingClassesInfo containingClasses =
-                typeMapper.getContainingClassesForDeserializedCallable((DeserializedSimpleFunctionDescriptor) functionDescriptor);
+                typeMapper.getContainingClassesForDeserializedCallable((DeserializedCallableMemberDescriptor) functionDescriptor);
 
         final ClassId containerId = containingClasses.getImplClassId();
 
@@ -303,10 +302,10 @@ public class InlineCodegen extends CallGenerator {
     ) {
         PsiElement element = DescriptorToSourceUtils.descriptorToDeclaration(functionDescriptor);
 
-        if (!(element instanceof KtNamedFunction)) {
+        if (!(element instanceof KtNamedFunction || element instanceof KtPropertyAccessor)) {
             throw new IllegalStateException("Couldn't find declaration for function " + functionDescriptor);
         }
-        KtNamedFunction inliningFunction = (KtNamedFunction) element;
+        KtDeclarationWithBody inliningFunction = (KtDeclarationWithBody) element;
 
         MethodNode node = new MethodNode(
                 InlineCodegenUtil.API,
@@ -329,9 +328,12 @@ public class InlineCodegen extends CallGenerator {
                     codegen.getParentCodegen(), inliningFunction, (FieldOwnerContext) methodContext.getParentContext(),
                     implementationOwner.getInternalName()
             );
+            if (!(element instanceof KtNamedFunction)) {
+                throw new IllegalStateException("Propertiy accessors with default parameters not supported " + functionDescriptor);
+            }
             FunctionCodegen.generateDefaultImplBody(
                     methodContext, functionDescriptor, maxCalcAdapter, DefaultParameterValueLoader.DEFAULT,
-                    inliningFunction, parentCodegen, asmMethod
+                    (KtNamedFunction) inliningFunction, parentCodegen, asmMethod
             );
             smap = createSMAPWithDefaultMapping(inliningFunction, parentCodegen.getOrCreateSourceMapper().getResultMappings());
         }
@@ -344,7 +346,7 @@ public class InlineCodegen extends CallGenerator {
         return new SMAPAndMethodNode(node, smap);
     }
 
-    private static boolean isBuiltInArrayIntrinsic(@NotNull FunctionDescriptor functionDescriptor) {
+    private static boolean isBuiltInArrayIntrinsic(@NotNull CallableMemberDescriptor functionDescriptor) {
         if (functionDescriptor instanceof FictitiousArrayConstructor) return true;
         String name = functionDescriptor.getName().asString();
         return (name.equals("arrayOf") || name.equals("emptyArray")) &&
