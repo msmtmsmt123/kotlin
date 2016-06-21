@@ -663,7 +663,7 @@ public abstract class StackValue {
         }
     }
 
-    public static class Delegate extends StackValue {
+    public static class Delegate extends StackValue implements ComplexOperationAware {
         @NotNull
         private final StackValue delegateValue;
         @NotNull
@@ -672,6 +672,8 @@ public abstract class StackValue {
         private final VariableDescriptorWithAccessors variableDescriptor;
         @NotNull
         private final ExpressionCodegen codegen;
+
+        private boolean inComplexOperation;
 
         private Delegate(
                 @NotNull Type type,
@@ -700,6 +702,7 @@ public abstract class StackValue {
         @Override
         public void putSelector(@NotNull Type type, @NotNull InstructionAdapter v) {
             ResolvedCall<FunctionDescriptor> resolvedCall = getResolvedCall(true);
+            checkComplexOperation(false, resolvedCall.getResultingDescriptor(), inComplexOperation);
             List<? extends ValueArgument> arguments = resolvedCall.getCall().getValueArguments();
             assert arguments.size() == 2 : "Resolved call for 'getValue' should have 2 arguments, but was " +
                                            arguments.size() + ": " + resolvedCall;
@@ -716,6 +719,8 @@ public abstract class StackValue {
         @Override
         public void store(@NotNull StackValue rightSide, @NotNull InstructionAdapter v, boolean skipReceiver) {
             ResolvedCall<FunctionDescriptor> resolvedCall = getResolvedCall(false);
+            checkComplexOperation(false, resolvedCall.getResultingDescriptor(), inComplexOperation);
+
             List<? extends ValueArgument> arguments = resolvedCall.getCall().getValueArguments();
             assert arguments.size() == 3 : "Resolved call for 'setValue' should have 3 arguments, but was " +
                                            arguments.size() + ": " + resolvedCall;
@@ -729,6 +734,16 @@ public abstract class StackValue {
             codegen.tempVariables.remove(arguments.get(0).asElement());
             codegen.tempVariables.remove(arguments.get(1).asElement());
             codegen.tempVariables.remove(arguments.get(2).asElement());
+        }
+
+        @Override
+        public boolean getPerformingComplexOperation() {
+            return inComplexOperation;
+        }
+
+        @Override
+        public void setPerformingComplexOperation(boolean inComplexOperation) {
+            this.inComplexOperation = inComplexOperation;
         }
     }
 
@@ -1165,7 +1180,7 @@ public abstract class StackValue {
         }
     }
 
-    static class Property extends StackValueWithSimpleReceiver {
+    static class Property extends StackValueWithSimpleReceiver implements ComplexOperationAware{
         private final CallableMethod getter;
         private final CallableMethod setter;
         private final Type backingFieldOwner;
@@ -1175,6 +1190,8 @@ public abstract class StackValue {
         private final String fieldName;
         @NotNull private final ExpressionCodegen codegen;
         @Nullable private final ResolvedCall resolvedCall;
+
+        private boolean inComplexOperation;
 
         public Property(
                 @NotNull PropertyDescriptor descriptor, @Nullable Type backingFieldOwner,
@@ -1210,6 +1227,7 @@ public abstract class StackValue {
                 PropertyGetterDescriptor getter = descriptor.getGetter();
                 assert getter != null : "Getter descriptor should be not null for " + descriptor;
                 if (resolvedCall != null && getter.isInline()) {
+                    checkComplexOperation(true, resolvedCall.getResultingDescriptor(), inComplexOperation);
                     CallGenerator callGenerator = codegen.getOrCreateCallGenerator(resolvedCall, getter);
                     callGenerator.putHiddenParams();
                     callGenerator.genCall(this.getter, resolvedCall, false, codegen);
@@ -1262,6 +1280,7 @@ public abstract class StackValue {
         public void store(@NotNull StackValue rightSide, @NotNull InstructionAdapter v, boolean skipReceiver) {
             PropertySetterDescriptor setter = descriptor.getSetter();
             if (resolvedCall != null && setter != null && setter.isInline()) {
+                checkComplexOperation(true, resolvedCall.getResultingDescriptor(), inComplexOperation);
                 assert this.setter != null : "Setter descriptor should be not null for " + descriptor;
                 CallGenerator callGenerator = codegen.getOrCreateCallGenerator(resolvedCall, setter);
                 if (!skipReceiver) {
@@ -1314,6 +1333,16 @@ public abstract class StackValue {
             }
 
             return false;
+        }
+
+        @Override
+        public boolean getPerformingComplexOperation() {
+            return inComplexOperation;
+        }
+
+        @Override
+        public void setPerformingComplexOperation(boolean inComplexOperation) {
+            this.inComplexOperation = inComplexOperation;
         }
     }
 
@@ -1783,6 +1812,9 @@ public abstract class StackValue {
     }
 
     private static StackValue complexReceiver(StackValue stackValue, boolean... isReadOperations) {
+        if (stackValue instanceof ComplexOperationAware) {
+            ((ComplexOperationAware) stackValue).setPerformingComplexOperation(true);
+        }
         if (stackValue instanceof StackValueWithSimpleReceiver) {
             return new DelegatedForComplexReceiver(stackValue.type, (StackValueWithSimpleReceiver) stackValue,
                                  new ComplexReceiver((StackValueWithSimpleReceiver) stackValue, isReadOperations));
@@ -1852,6 +1884,15 @@ public abstract class StackValue {
             v.mark(ifNull);
             v.pop();
             v.mark(end);
+        }
+    }
+
+    private static void checkComplexOperation(boolean checkInline, @NotNull CallableDescriptor descriptor, boolean inComplexOperation) {
+        if ((!checkInline || descriptor instanceof FunctionDescriptor && ((FunctionDescriptor) descriptor).isInline()) &&
+            inComplexOperation) {
+            throw new RuntimeException(
+                    "Augment assignment and increment are not supported for local delegated properties ans inline properties: " +
+                    descriptor);
         }
     }
 }
