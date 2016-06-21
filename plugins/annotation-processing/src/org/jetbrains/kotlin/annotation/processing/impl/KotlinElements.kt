@@ -21,7 +21,9 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.PsiSuperMethodUtil
 import com.intellij.psi.util.PsiTypesUtil
-import org.jetbrains.kotlin.java.model.*
+import org.jetbrains.kotlin.java.model.JeAnnotationOwner
+import org.jetbrains.kotlin.java.model.JeElement
+import org.jetbrains.kotlin.java.model.JeName
 import org.jetbrains.kotlin.java.model.elements.JeAnnotationMirror
 import org.jetbrains.kotlin.java.model.elements.JeMethodExecutableElement
 import org.jetbrains.kotlin.java.model.elements.JePackageElement

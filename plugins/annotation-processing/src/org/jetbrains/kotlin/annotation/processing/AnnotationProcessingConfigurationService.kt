@@ -16,6 +16,4 @@
 
 package org.jetbrains.kotlin.annotation.processing
 
-import java.net.URL
-
 class AnnotationProcessingConfigurationService(val aptClassLoader: ClassLoader)

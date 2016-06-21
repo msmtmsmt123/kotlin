@@ -16,7 +16,7 @@
 
 package org.jetbrains.kotlin.annotation.processing.impl
 
-import java.io.*
+import java.io.File
 import javax.tools.JavaFileObject
 
 class KotlinJavaFileObject(val file: File) : JavaFileObject {
