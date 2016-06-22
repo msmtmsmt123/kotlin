@@ -1,3 +1,4 @@
+@file:JvmVersion
 package kotlin.internal
 
 import java.io.Closeable
