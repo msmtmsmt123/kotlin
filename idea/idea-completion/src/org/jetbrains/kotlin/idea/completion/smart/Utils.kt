@@ -33,8 +33,10 @@ import org.jetbrains.kotlin.idea.completion.suppressAutoInsertion
 import org.jetbrains.kotlin.idea.core.*
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.util.*
+import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.callableReferences.getReflectionTypeForCandidateDescriptor
 import org.jetbrains.kotlin.types.TypeSubstitutor
+import org.jetbrains.kotlin.types.expressions.DoubleColonLHS
 import org.jetbrains.kotlin.types.typeUtil.TypeNullability
 import org.jetbrains.kotlin.types.typeUtil.isNothing
 import org.jetbrains.kotlin.util.descriptorsEqualWithSubstitution
@@ -246,10 +248,10 @@ private fun MutableCollection<LookupElement>.addLookupElementsForNullable(factor
     }
 }
 
-fun CallableDescriptor.callableReferenceType(resolutionFacade: ResolutionFacade): FuzzyType? {
+fun CallableDescriptor.callableReferenceType(resolutionFacade: ResolutionFacade, ignoreReceiver: Boolean): FuzzyType? {
     if (!CallType.CALLABLE_REFERENCE.descriptorKindFilter.accepts(this)) return null // not supported by callable references
     return getReflectionTypeForCandidateDescriptor(
-            this, resolutionFacade.getFrontendService(ReflectionTypes::class.java), false, resolutionFacade.moduleDescriptor
+            this, resolutionFacade.getFrontendService(ReflectionTypes::class.java), ignoreReceiver, resolutionFacade.moduleDescriptor
     )?.toFuzzyType(emptyList())
 }
 
@@ -282,11 +284,14 @@ fun LookupElement.assignSmartCompletionPriority(priority: SmartCompletionItemPri
 
 fun DeclarationDescriptor.fuzzyTypesForSmartCompletion(
         smartCastCalculator: SmartCastCalculator,
-        callType: CallType<*>,
-        resolutionFacade: ResolutionFacade
+        callTypeAndReceiver: CallTypeAndReceiver<*, *>,
+        resolutionFacade: ResolutionFacade,
+        bindingContext: BindingContext
 ): Collection<FuzzyType> {
-    if (callType == CallType.CALLABLE_REFERENCE) {
-        return (this as? CallableDescriptor)?.callableReferenceType(resolutionFacade).singletonOrEmptyList()
+    if (callTypeAndReceiver is CallTypeAndReceiver.CALLABLE_REFERENCE) {
+        val receiver = callTypeAndReceiver.receiver
+        val ignoreReceiver = receiver != null && bindingContext[BindingContext.DOUBLE_COLON_LHS, receiver] is DoubleColonLHS.Expression
+        return (this as? CallableDescriptor)?.callableReferenceType(resolutionFacade, ignoreReceiver).singletonOrEmptyList()
     }
 
     if (this is CallableDescriptor) {
